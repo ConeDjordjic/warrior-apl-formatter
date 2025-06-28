@@ -1,0 +1,18 @@
+[application]
+
+[web.app]
+base_path = "apl-formatter"
+
+# HTML title tag content
+title = "apl-formatter"
+
+[web.resource]
+
+# Additional JavaScript files
+script = []
+
+[web.resource.dev]
+
+# Javascript code file
+# serve: [dev-server] only
+script = []
