@@ -1,4 +1,4 @@
-use dioxus::{document::Stylesheet, prelude::*};
+use dioxus::prelude::*;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::BTreeMap;
@@ -81,45 +81,67 @@ fn parse_expr(tokens: &[&str]) -> Expr {
 }
 
 fn pretty_format_condition(expr: &Expr, indent: usize) -> String {
-    let indent_str = " ".repeat(indent * 4);
+    let indent_str = "    ".repeat(indent);
+
     match expr {
         Expr::Atom(s) => format!("{}{}", indent_str, s),
         Expr::And(parts) => {
-            let inner = parts
-                .iter()
-                .map(|p| pretty_format_condition(p, 0).trim().to_string())
-                .collect::<Vec<_>>()
-                .join(" and ");
-            format!("{}{}", indent_str, inner)
-        }
-        Expr::Or(parts) => parts
-            .iter()
-            .enumerate()
-            .map(|(i, p)| {
-                let prefix = if i == 0 { "" } else { "OR " };
-                let formatted_part = pretty_format_condition(p, 0);
+            if parts.is_empty() {
+                return "".to_string();
+            }
+            if parts.len() == 1 {
+                return pretty_format_condition(&parts[0], indent);
+            }
 
-                formatted_part
-                    .lines()
-                    .enumerate()
-                    .map(|(line_idx, line)| {
-                        if line_idx == 0 {
-                            format!("{}{}{}", indent_str, prefix, line.trim_start())
-                        } else {
-                            format!("{}{}", indent_str, line.trim_start())
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            })
-            .collect::<Vec<_>>()
-            .join("\n"),
+            let formatted_parts: Vec<String> = parts
+                .iter()
+                .map(|part| {
+                    let is_multiline_or = if let Expr::Or(sub_parts) = part {
+                        sub_parts.len() > 1
+                    } else {
+                        false
+                    };
+
+                    if is_multiline_or {
+                        let or_content = pretty_format_condition(part, indent + 1);
+                        format!("(\n{}\n{})", or_content, indent_str)
+                    } else {
+                        let formatted = pretty_format_condition(part, 0);
+                        format!("{}", formatted.trim())
+                    }
+                })
+                .collect();
+
+            format!("{}{}", indent_str, formatted_parts.join(" AND "))
+        }
+        Expr::Or(parts) => {
+            if parts.is_empty() {
+                return "".to_string();
+            }
+            if parts.len() == 1 {
+                return pretty_format_condition(&parts[0], indent);
+            }
+
+            let formatted_parts: Vec<String> = parts
+                .iter()
+                .enumerate()
+                .map(|(i, part)| {
+                    if i == 0 {
+                        pretty_format_condition(part, indent)
+                    } else {
+                        let formatted = pretty_format_condition(part, 0);
+                        format!("{}OR {}", indent_str, formatted.trim())
+                    }
+                })
+                .collect();
+
+            formatted_parts.join("\n")
+        }
     }
 }
 
 fn transform_condition(raw: &str) -> String {
     let result = NOT_TALENT_RE.replace_all(raw, "$1 not talented");
-
     let result = TALENT_RE.replace_all(&result, "$1 talented");
 
     let tokens = tokenize_line(&result);
@@ -198,7 +220,134 @@ fn App() -> Element {
     let groups = process_apl_grouped(&input());
 
     rsx! {
-        Stylesheet {href: asset!("./assets/main.css")}
+        head {
+            style {
+                {r#"
+                html, body {
+                    margin: 0;
+                    padding: 0;
+                    background-color: #05080d;
+                    color: #f3f4f6;
+                    height: 100%;
+                    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif;
+                }
+
+                * {
+                    box-sizing: border-box;
+                }
+
+                .app-container {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 1.5rem;
+                    max-width: 1200px;
+                    padding: 1.5rem;
+                    margin: 0 auto;
+                    background-color: #05080d;
+                    color: #f3f4f6;
+                    min-height: 100vh;
+                }
+
+                .main-input {
+                    width: 100%;
+                    font-family: "SF Mono", "Monaco", "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
+                    background-color: #1f2937;
+                    color: #f3f4f6;
+                    border: 1px solid #4b5563;
+                    padding: 0.75rem;
+                    border-radius: 0.375rem;
+                    outline: none;
+                    transition: all 0.2s ease-in-out;
+                    resize: vertical;
+                    min-height: 200px;
+                    font-size: 14px;
+                    line-height: 1.5;
+                }
+
+                .main-input:focus {
+                    border-color: #3b82f6;
+                    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+                }
+
+                .main-input::placeholder {
+                    color: #9ca3af;
+                }
+
+                .groups-grid {
+                    display: grid;
+                    gap: 1.5rem;
+                    width: 100%;
+                    grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+                    grid-auto-rows: 1fr;
+                }
+
+                .group-card {
+                    display: flex;
+                    flex-direction: column;
+                    border-radius: 0.5rem;
+                    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+                    overflow: hidden;
+                    background-color: #1f2937;
+                    border: 1px solid #4b5563;
+                    min-height: 400px;
+                }
+
+                .group-header {
+                    margin: 0;
+                    padding: 0.75rem 1rem;
+                    background-color: #374151;
+                    color: #f3f4f6;
+                    font-family: "SF Mono", "Monaco", "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
+                    font-size: 0.875rem;
+                    font-weight: 600;
+                    text-align: center;
+                    border-bottom: 1px solid #4b5563;
+                    flex-shrink: 0;
+                }
+
+                .group-content {
+                    width: 100%;
+                    flex: 1;
+                    font-family: "SF Mono", "Monaco", "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
+                    background-color: #1f2937;
+                    color: #f3f4f6;
+                    border: none;
+                    padding: 0.75rem;
+                    outline: none;
+                    resize: none;
+                    overflow-y: auto;
+                    line-height: 1.6;
+                    white-space: pre-wrap;
+                    word-wrap: break-word;
+                    font-size: 13px;
+                    tab-size: 4;
+                }
+
+                .group-content:focus {
+                    background-color: #1f2937;
+                    box-shadow: inset 0 0 0 2px #3b82f6;
+                }
+
+                @media (max-width: 768px) {
+                    .groups-grid {
+                        grid-template-columns: 1fr;
+                    }
+                    .app-container {
+                        padding: 1rem;
+                    }
+                }
+
+                @media (min-width: 1400px) {
+                    .app-container {
+                        max-width: 1600px;
+                    }
+                    .groups-grid {
+                        grid-template-columns: repeat(auto-fit, minmax(600px, 1fr));
+                    }
+                }
+                "#}
+            }
+        }
 
         div {
             class: "app-container",
@@ -230,7 +379,7 @@ fn App() -> Element {
                                     "{when_type}"
                                 }
                                 textarea {
-                                    rows: "{40}",
+                                    rows: "30",
                                     class: "group-content",
                                     readonly: true,
                                     value: "{numbered_spells}",

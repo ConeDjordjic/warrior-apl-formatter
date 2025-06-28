@@ -1,7 +1,6 @@
 [application]
 
 [web.app]
-base_path = "apl-formatter"
 
 # HTML title tag content
 title = "apl-formatter"
